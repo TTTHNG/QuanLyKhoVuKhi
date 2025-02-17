@@ -240,11 +240,11 @@
         <table>
             <thead>
                 <tr>
-                    <th>STT</th>
-                    <th>Họ Và Tên</th>
+                    <th>Tên</th>
                     <th>Chức Vụ</th>
                     <th>Số Điện Thoại</th>
                     <th>Giới Tính</th>
+                    <th>ID Thẻ</th>
                     <th>Quyền</th>
                     <th>Hành Động</th>
                 </tr>
@@ -591,172 +591,209 @@
 </script>
 
 <script>
-   var historyData = []; // Lưu trữ toàn bộ lịch sử
-var currentPage = 1; // Trang hiện tại
-var itemsPerPage = 10; // Số lượng bản ghi mỗi trang
+    var historyData = []; // Lưu trữ toàn bộ lịch sử
+    var currentPage = 1; // Trang hiện tại
+    var itemsPerPage = 10; // Số lượng bản ghi mỗi trang
 
-document.addEventListener("DOMContentLoaded", function () {
-    var historyRef = firebase.database().ref("History");
+    // Hàm chuyển đổi chuỗi ThoiGian sang đối tượng Date
+    function parseThoiGian(dateStr) {
+      // Định dạng ban đầu: "HH:mm:ss D/M/YYYY"
+      let parts = dateStr.split(" ");
+      if (parts.length !== 2) return new Date(dateStr); // fallback nếu không đúng định dạng
+      let timePart = parts[0]; // "18:29:28"
+      let datePart = parts[1]; // "7/2/2025"
+      let dateParts = datePart.split("/");
+      if(dateParts.length !== 3) return new Date(dateStr);
+      // Giả sử dateParts theo thứ tự: ngày/tháng/năm
+      let day = dateParts[0];
+      let month = dateParts[1];
+      let year = dateParts[2];
+      // Tạo chuỗi theo định dạng "MM/DD/YYYY HH:mm:ss" mà Date constructor có thể nhận
+      let formattedDateStr = `${month}/${day}/${year} ${timePart}`;
+      return new Date(formattedDateStr);
+    }
 
-    // Lắng nghe dữ liệu thay đổi trong Firebase
-    historyRef.on("value", function (snapshot) {
-        var data = snapshot.val() || {}; // Nếu không có dữ liệu, tạo object rỗng
-        console.log("🔥 Dữ liệu lịch sử:", data);
+    document.addEventListener("DOMContentLoaded", function () {
+        var historyRef = firebase.database().ref("History");
 
-        // Chuyển dữ liệu từ Object sang Array và sắp xếp theo thời gian mới nhất trước
-        let rawData = Object.values(data).sort((a, b) => {
-            return new Date(b.ThoiGian) - new Date(a.ThoiGian);
+        // Lắng nghe dữ liệu thay đổi trong Firebase
+        historyRef.on("value", function (snapshot) {
+            var data = snapshot.val() || {}; // Nếu không có dữ liệu, tạo object rỗng
+            console.log("🔥 Dữ liệu lịch sử:", data);
+
+            // Chuyển dữ liệu từ Object sang Array và sắp xếp theo thời gian mới nhất trước
+            let rawData = Object.values(data).sort((a, b) => {
+                return parseThoiGian(b.ThoiGian) - parseThoiGian(a.ThoiGian);
+            });
+
+            // Lọc bỏ dữ liệu trùng lặp dựa trên ThoiGian
+            historyData = removeDuplicates(rawData, 'ThoiGian');
+
+            renderTable(); // Gọi hàm hiển thị dữ liệu
+        }, function (error) {
+            console.error("❌ Lỗi khi đọc lịch sử từ Firebase:", error);
+        });
+    });
+
+    // Hàm lọc dữ liệu trùng lặp theo một key nhất định
+    function removeDuplicates(dataArray, key) {
+        let uniqueData = [];
+        let seenKeys = new Set();
+
+        dataArray.forEach(item => {
+            if (!seenKeys.has(item[key])) {
+                seenKeys.add(item[key]);
+                uniqueData.push(item);
+            }
+        });
+        return uniqueData;
+    }
+
+    function renderTable() {
+        var tbody = document.getElementById("history-table-body");
+        tbody.innerHTML = ""; // Xóa dữ liệu cũ trước khi cập nhật
+
+        // Xác định phạm vi dữ liệu cần hiển thị trên trang hiện tại
+        var startIndex = (currentPage - 1) * itemsPerPage;
+        var endIndex = startIndex + itemsPerPage;
+        var pageData = historyData.slice(startIndex, endIndex);
+
+        // Duyệt qua danh sách và hiển thị
+        pageData.forEach((entry, index) => {
+            var row = document.createElement("tr");
+            row.innerHTML = `
+                <td>${startIndex + index + 1}</td> <!-- STT -->
+                <td>${entry.ThoiGian}</td>
+                <td>${entry.NhanSu}</td>
+                <td>${entry.ChucVu}</td>
+                <td>${entry.TrangThaiCua}</td>
+            `;
+            tbody.appendChild(row);
         });
 
-        // Lọc bỏ dữ liệu trùng lặp dựa trên ThoiGian
-        historyData = removeDuplicates(rawData, 'ThoiGian');
+        // Cập nhật số trang
+        document.getElementById("pageNumber").textContent = `Trang ${currentPage}`;
 
-        renderTable(); // Gọi hàm hiển thị dữ liệu
-    }, function (error) {
-        console.error("❌ Lỗi khi đọc lịch sử từ Firebase:", error);
-    });
-});
+        // Kiểm tra xem có cần ẩn nút hay không
+        document.getElementById("prevPage").disabled = (currentPage === 1);
+        document.getElementById("nextPage").disabled = (endIndex >= historyData.length);
+    }
 
-// Hàm lọc dữ liệu trùng lặp theo một key nhất định
-function removeDuplicates(dataArray, key) {
-    let uniqueData = [];
-    let seenKeys = new Set();
-
-    dataArray.forEach(item => {
-        if (!seenKeys.has(item[key])) {
-            seenKeys.add(item[key]);
-            uniqueData.push(item);
-        }
-    });
-    return uniqueData;
-}
-
-function renderTable() {
-    var tbody = document.getElementById("history-table-body");
-    tbody.innerHTML = ""; // Xóa dữ liệu cũ trước khi cập nhật
-
-    // Xác định phạm vi dữ liệu cần hiển thị trên trang hiện tại
-    var startIndex = (currentPage - 1) * itemsPerPage;
-    var endIndex = startIndex + itemsPerPage;
-    var pageData = historyData.slice(startIndex, endIndex);
-
-    // Duyệt qua danh sách và hiển thị
-    pageData.forEach((entry, index) => {
-        var row = document.createElement("tr");
-        row.innerHTML = `
-            <td>${startIndex + index + 1}</td> <!-- STT -->
-            <td>${entry.ThoiGian}</td>
-            <td>${entry.NhanSu}</td>
-            <td>${entry.ChucVu}</td>
-            <td>${entry.TrangThaiCua}</td>
-        `;
-        tbody.appendChild(row);
-    });
-
-    // Cập nhật số trang
-    document.getElementById("pageNumber").textContent = `Trang ${currentPage}`;
-
-    // Kiểm tra xem có cần ẩn nút hay không
-    document.getElementById("prevPage").disabled = (currentPage === 1);
-    document.getElementById("nextPage").disabled = (endIndex >= historyData.length);
-}
-
-function changePage(direction) {
-    currentPage += direction; // Thay đổi trang (1 = tiếp theo, -1 = trước đó)
-    renderTable(); // Cập nhật hiển thị
-}
-
-</script>
+    function changePage(direction) {
+        currentPage += direction; // Thay đổi trang (1 = tiếp theo, -1 = trước đó)
+        renderTable(); // Cập nhật hiển thị
+    }
+  </script>
 
 
 
 
 
 <script>
-    var isAlertTriggered = false; // ✅ Ngăn cảnh báo trùng lặp khi `Chuong = 1`
-    var lastNotification = ""; // ✅ Lưu nội dung cuối cùng để kiểm tra trùng lặp
+    // Hàm chuyển đổi chuỗi ThoiGian sang đối tượng Date
+    // Định dạng ban đầu: "HH:mm:ss D/M/YYYY"
+    function parseThoiGian(dateStr) {
+      let parts = dateStr.split(" ");
+      if (parts.length !== 2) return new Date(dateStr); // fallback nếu không đúng định dạng
+      let timePart = parts[0]; // "18:32:48"
+      let datePart = parts[1]; // "7/2/2025"
+      let dateParts = datePart.split("/");
+      if (dateParts.length !== 3) return new Date(dateStr);
+      // Giả sử định dạng ban đầu là: ngày/tháng/năm
+      let day = dateParts[0];
+      let month = dateParts[1];
+      let year = dateParts[2];
+      // Tạo chuỗi theo định dạng "MM/DD/YYYY HH:mm:ss" để Date constructor nhận diện
+      let formattedDateStr = `${month}/${day}/${year} ${timePart}`;
+      return new Date(formattedDateStr);
+    }
+
+    var isAlertTriggered = false; // Ngăn cảnh báo trùng lặp khi `Chuong = 1`
+    var lastNotification = ""; // Lưu nội dung cuối cùng để kiểm tra trùng lặp
 
     document.addEventListener("DOMContentLoaded", function () {
-        var chuongRef = firebase.database().ref("Chuong");
-        var gasRef = firebase.database().ref("GAS");
-        var kcRef = firebase.database().ref("KC");
-        var notificationRef = firebase.database().ref("Notifications");
+      var chuongRef = firebase.database().ref("Chuong");
+      var gasRef = firebase.database().ref("GAS");
+      var kcRef = firebase.database().ref("KC");
+      var notificationRef = firebase.database().ref("Notifications");
 
-        chuongRef.on("value", function (chuongSnapshot) {
-            var chuongValue = chuongSnapshot.val();
+      // Lắng nghe giá trị của "Chuong"
+      chuongRef.on("value", function (chuongSnapshot) {
+        var chuongValue = chuongSnapshot.val();
 
-            if (chuongValue === 1 && !isAlertTriggered) { // ✅ Chỉ xử lý nếu `Chuong = 1` và chưa báo trước đó
-                isAlertTriggered = true;
+        if (chuongValue === 1 && !isAlertTriggered) { // Chỉ xử lý nếu `Chuong = 1` và chưa báo trước đó
+          isAlertTriggered = true;
 
-                var now = new Date();
-                var thoiGian = now.toLocaleString("vi-VN", { hour12: false });
+          var now = new Date();
+          var thoiGian = now.toLocaleString("vi-VN", { hour12: false });
 
-                gasRef.once("value", function (gasSnapshot) {
-                    var gasValue = gasSnapshot.val();
+          gasRef.once("value", function (gasSnapshot) {
+            var gasValue = gasSnapshot.val();
 
-                    kcRef.once("value", function (kcSnapshot) {
-                        var kcValue = kcSnapshot.val();
-                        var message = "";
+            kcRef.once("value", function (kcSnapshot) {
+              var kcValue = kcSnapshot.val();
+              var message = "";
 
-                        if (gasValue === 1) {
-                            message = "Phát hiện có khí gas!";
-                        } else if (kcValue < 30) {
-                            message = `Phát hiện có người đến gần, khoảng cách: ${kcValue} cm`;
-                        }
+              if (gasValue === 1) {
+                message = "Phát hiện có khí gas!";
+              } else if (kcValue < 30) {
+                message = `Phát hiện có người đến gần, khoảng cách: ${kcValue} cm`;
+              }
 
-                        // ✅ Nếu có thông báo, kiểm tra xem đã tồn tại chưa
-                        if (message && message !== lastNotification) {
-                            lastNotification = message; // ✅ Lưu lại thông báo để tránh trùng
-                            saveNotification(thoiGian, message);
-                        }
-                    });
-                });
-
-            } else if (chuongValue === 0) {
-                isAlertTriggered = false; // ✅ Reset khi `Chuong` về 0 để sẵn sàng lần tiếp theo
-                lastNotification = ""; // ✅ Xóa bộ nhớ để tránh lỗi không báo lại
-            }
-        });
-
-        // ✅ Lắng nghe thông báo từ Firebase và cập nhật giao diện
-        notificationRef.on("value", function (snapshot) {
-            var notifications = snapshot.val() || {};
-            var tbody = document.getElementById("notification-table-body");
-            tbody.innerHTML = ""; // Xóa dữ liệu cũ
-
-            // Chuyển object thành array, loại bỏ trùng lặp, sắp xếp theo thời gian mới nhất
-            var uniqueNotifications = Object.values(notifications).reduce((acc, cur) => {
-                if (!acc.find(n => n.NoiDung === cur.NoiDung && n.ThoiGian === cur.ThoiGian)) {
-                    acc.push(cur);
-                }
-                return acc;
-            }, []).sort((a, b) => new Date(b.ThoiGian) - new Date(a.ThoiGian));
-
-            uniqueNotifications.forEach((entry, index) => {
-                var row = document.createElement("tr");
-                row.innerHTML = `
-                    <td>${index + 1}</td>
-                    <td>${entry.ThoiGian}</td>
-                    <td>${entry.NoiDung}</td>
-                `;
-                tbody.appendChild(row);
+              // Nếu có thông báo, kiểm tra xem đã tồn tại chưa
+              if (message && message !== lastNotification) {
+                lastNotification = message; // Lưu lại thông báo để tránh trùng
+                saveNotification(thoiGian, message);
+              }
             });
+          });
+
+        } else if (chuongValue === 0) {
+          // Reset khi `Chuong` về 0 để sẵn sàng cho lần báo tiếp theo
+          isAlertTriggered = false;
+          lastNotification = "";
+        }
+      });
+
+      // Lắng nghe thông báo từ Firebase và cập nhật giao diện
+      notificationRef.on("value", function (snapshot) {
+        var notifications = snapshot.val() || {};
+        var tbody = document.getElementById("notification-table-body");
+        tbody.innerHTML = ""; // Xóa dữ liệu cũ
+
+        // Chuyển object thành array, loại bỏ trùng lặp và sắp xếp theo thời gian mới nhất
+        var uniqueNotifications = Object.values(notifications).reduce((acc, cur) => {
+          if (!acc.find(n => n.NoiDung === cur.NoiDung && n.ThoiGian === cur.ThoiGian)) {
+            acc.push(cur);
+          }
+          return acc;
+        }, []).sort((a, b) => parseThoiGian(b.ThoiGian) - parseThoiGian(a.ThoiGian));
+
+        uniqueNotifications.forEach((entry, index) => {
+          var row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${entry.ThoiGian}</td>
+            <td>${entry.NoiDung}</td>
+          `;
+          tbody.appendChild(row);
         });
+      });
     });
 
-    // ✅ Hàm lưu thông báo vào Firebase
+    // Hàm lưu thông báo vào Firebase
     function saveNotification(thoiGian, noiDung) {
-        var newNotificationRef = firebase.database().ref("Notifications").push();
-        newNotificationRef.set({
-            ThoiGian: thoiGian,
-            NoiDung: noiDung
-        }).then(() => {
-            console.log(`✅ Đã lưu thông báo: ${noiDung}`);
-        }).catch(error => {
-            console.error("❌ Lỗi khi lưu thông báo:", error);
-        });
+      var newNotificationRef = firebase.database().ref("Notifications").push();
+      newNotificationRef.set({
+        ThoiGian: thoiGian,
+        NoiDung: noiDung
+      }).then(() => {
+        console.log(`✅ Đã lưu thông báo: ${noiDung}`);
+      }).catch(error => {
+        console.error("❌ Lỗi khi lưu thông báo:", error);
+      });
     }
-</script>
+  </script>
 
 
 
