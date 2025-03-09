@@ -762,7 +762,7 @@
 
         // Chuyển object thành array, loại bỏ trùng lặp và sắp xếp theo thời gian mới nhất
         var uniqueNotifications = Object.values(notifications).reduce((acc, cur) => {
-          if (!acc.find(n => n.NoiDung === cur.NoiDung && n.ThoiGian === cur.ThoiGian)) {
+          if (!acc.find(n => n.NoiDung === cur.NoiDung || n.ThoiGian === cur.ThoiGian)) {
             acc.push(cur);
           }
           return acc;
